@@ -8,7 +8,7 @@ Then activate the created conda environment with `conda activate myenv` and inst
 Run `pyinstaller image_annotator.py` to compile the Image Annotator into an executable file. Then the `exe` file can be found in the generated `dist` folder.
 
 ## Running on Image Annotator
-The first run of the compiled image annotator could take up to 1 minutes, please be patient. The next run will be quick. 
+The first run of the compiled annotator could take up to 1 minute, please be patient. The next run will be almost instant. 
 After running, a window will pop up to ask you to select the folder containing the images that you want to label.
 
 ![img.png](pop-up-window.png)
