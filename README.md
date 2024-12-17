@@ -7,7 +7,7 @@ Then install the dependencies with `pip install -r requirements.txt`
 ## Compiling the Image Annotator
 Run `pyinstaller image_annotator.py` for compiling it into an executable file. Then the exe file can be found in the generated `dist` folder.
 
-### Running on Image Annotator
+## Running on Image Annotator
 The first run of the compiled image annotator could take up to 1 minutes, please be patient. The next run will be quick.  
 After running, a window will pop up to ask you to select the folder containing the images that you want to label.
 
