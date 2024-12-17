@@ -180,14 +180,9 @@ class ImageViewer:
 
 # Main function to start the application
 def main():
-    # folder_path = filedialog.askdirectory(title="Select Image Folder")
-    # if not folder_path:
-    #     return
-    parser = argparse.ArgumentParser(description='AI Hab Human Expert Evaluation')
-    parser.add_argument('--data-path', type=str, default='CS_Xplots_2019_2023', help='Path to folder with images to label')
-    args = parser.parse_args()
-
-    folder_path = f'../data/{args.data_path}'
+    folder_path = filedialog.askdirectory(title="Select Image Folder")
+    if not folder_path:
+        return
 
     root = tk.Tk()
     app = ImageViewer(root, folder_path)
