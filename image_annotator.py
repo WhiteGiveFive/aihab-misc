@@ -110,7 +110,7 @@ class ImageViewer:
         labelled_images = self.data["Label"].notna().sum()
         displayed_images = len(self.images)
         self.info_label.config(
-            text=f"Total Images: {total_images} | Labeled: {labelled_images} | Displaying: {displayed_images}"
+            text=f"Total Images: {total_images} | Labelled: {labelled_images} | Displaying: {displayed_images}"
         )
 
     def update_image(self):
