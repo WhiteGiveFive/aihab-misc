@@ -21,7 +21,7 @@ After selecting your folder, the main interface shows your images in the folder.
 ### Run the program
 - Generate the t-SNE results and save them into a csv file by running the `visual_feat.py` in the `aihab` repo. 
 - Then navigate to the target image folder to run `python -m http.server 9010`, here `9010` can be defined by the user. Check the host in a browser with `http://localhost:9010/`. 
-- Finally, run the script `python interactive_tsne.py --tsne-results data/tsne/tsne_results.csv --image-folder ../aihab/data/CS_Xplots_2019_2023 --image-port 9010 --dash-port 9001 
---corcls-results data/tsne/correctly_classified_samples_cvtest.csv --miscls-results data/tsne/misclassified_samples_cvtest.csv`. 
+- Finally, run the script `python interactive_tsne.py --emb-results data/tsne/tsne_results.csv --image-folder ../aihab/data/CS_Xplots_2019_2023 --image-port 9010 --dash-port 9001 
+--predictions-csv1 data/tsne/correctly_classified_samples_cvtest.csv --predictions-csv2 data/tsne/misclassified_samples_cvtest.csv`. 
 Here, `--image-folder ../aihab/data/CS_Xplots_2019_2023` should be the absolute path to the image folder you host at the previous step. 
 `--image-port 9010` should have the same port with `python -m http.server 9010` at step 2.
