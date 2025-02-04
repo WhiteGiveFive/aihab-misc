@@ -48,6 +48,15 @@ def build_figure_for_l2(df_all, l2_word_label, image_port):
         # Filter to only those L3 IDs
         df_filtered = df_all[df_all['label'].isin(l3_ids)]
 
+    # Prepare hover data: by default show filename and ground-truth word label.
+    hover_columns = ["filename", "word_label"]
+    # If predictions have been merged, add prediction details.
+    if "predicted_word_label" in df_filtered.columns:
+        hover_columns.extend([
+            "predicted_word_label", "top3_label_1", "top3_prob_1",
+            "top3_label_2", "top3_prob_2", "top3_label_3", "top3_prob_3"
+        ])
+
     # Build the figure. We'll:
     # - color by L3 word_label
     # - use symbol by L3 word_label (for varied shapes)
@@ -59,7 +68,7 @@ def build_figure_for_l2(df_all, l2_word_label, image_port):
         y="tsne_y",
         color="word_label",         # color by the word label
         symbol="word_label",        # shape by word label
-        hover_data=["filename", "word_label"],
+        hover_data=hover_columns,
         custom_data=["img_url"],    # for retrieving image on click
         # You could also adjust the size if you have a column for that
         # size="some_size_column",
@@ -127,24 +136,25 @@ def main():
         default='Grassland',
         help="Name of L2 Class (e.g., Grassland).")
 
+    # New optional arguments for predictions CSV files
+    parser.add_argument(
+        "--corcls-results",
+        type=str,
+        default=None,
+        help="Path to first CSV file containing correct model predictions."
+    )
+    parser.add_argument(
+        "--miscls-results",
+        type=str,
+        default=None,
+        help="Path to second CSV file containing misclassified model predictions."
+    )
+
     args = parser.parse_args()
 
     tsne_csv = os.path.abspath(args.tsne_results)
     image_server_port = args.image_port
     dash_port = args.dash_port
-
-    # ----------------------------------------------------------------
-    # 2) START THE LOCAL IMAGE SERVER ON A BACKGROUND THREAD
-    # ----------------------------------------------------------------
-    # We'll start a separate thread so that the Dash app can run concurrently
-    # in the main thread.
-    # image_folder = os.path.abspath(args.image_folder)
-    # server_thread = threading.Thread(
-    #     target=serve_folder,
-    #     args=(image_folder, image_server_port),
-    #     daemon=True
-    # )
-    # server_thread.start()
 
     # 2) LOAD T-SNE RESULTS (CSV)
     if not os.path.exists(tsne_csv):
@@ -167,7 +177,45 @@ def main():
     base_url = f"http://localhost:{image_server_port}/"
     df["img_url"] = base_url + df["filename"].astype(str)
 
-    # 5) Create the Dash app
+    # 5) Merge predictions CSVs if provided.
+    # Both predictions-csv files have the same column headers:
+    # "file_name, ground_truth_num_label, ground_truth_word_label, predicted_label, predicted_word_label, dataset,
+    #  top3_label_1, top3_prob_1, top3_label_2, top3_prob_2, top3_label_3, top3_prob_3"
+    # and they list disjoint subsets of the full image set.
+    # Here we combine them (if provided) and merge with the main DataFrame.
+    pred_dfs = []
+    if args.corcls_results:
+        pred_csv1 = os.path.abspath(args.corcls_results)
+        if not os.path.exists(pred_csv1):
+            raise FileNotFoundError(f"[ERROR] Predictions CSV1 file not found: {pred_csv1}")
+        df_pred1 = pd.read_csv(pred_csv1)
+        # Convert top3 numeric labels to word labels.
+        for col in ["top3_label_1", "top3_label_2", "top3_label_3"]:
+            if col in df_pred1.columns:
+                df_pred1[col] = df_pred1[col].map(REASSIGN_LABEL_NAME_L3)
+        pred_dfs.append(df_pred1)
+
+    if args.miscls_results:
+        pred_csv2 = os.path.abspath(args.miscls_results)
+        if not os.path.exists(pred_csv2):
+            raise FileNotFoundError(f"[ERROR] Predictions CSV2 file not found: {pred_csv2}")
+        df_pred2 = pd.read_csv(pred_csv2)
+        for col in ["top3_label_1", "top3_label_2", "top3_label_3"]:
+            if col in df_pred2.columns:
+                df_pred2[col] = df_pred2[col].map(REASSIGN_LABEL_NAME_L3)
+        pred_dfs.append(df_pred2)
+
+    if pred_dfs:
+        # Concatenate the predictions (they are disjoint subsets).
+        df_pred_all = pd.concat(pred_dfs, ignore_index=True)
+        # Merge predictions with the main DataFrame on filename.
+        # t-SNE CSV uses "filename" and predictions CSV uses "file_name".
+        df = df.merge(df_pred_all, left_on="filename", right_on="file_name", how="left")
+        # Optionally drop the redundant "file_name" column.
+        if "file_name" in df.columns:
+            df = df.drop(columns=["file_name"])
+
+    # 6) Create the Dash app
     app = Dash(__name__)
 
     # We'll store the entire df in a dcc.Store so the callback can filter it.
@@ -187,60 +235,78 @@ def main():
             style={"width": "300px"}
         ),
 
-        # Graph
-        dcc.Graph(
-            id="tsne-graph",
-            style={
-                "width": "70%",
-                "height": "800px",  # <-- Make the plot bigger/taller
-                "display": "inline-block"
-            }
-        ),
+        # Use a flex container to arrange the graph and the image panel side by side.
+        html.Div([
+            # Left side: t-SNE graph
+            html.Div(
+                dcc.Graph(
+                    id="tsne-graph",
+                    style={"width": "100%", "height": "800px"}
+                ),
+                style={"width": "70%"}  # adjust the width as needed
+            ),
+            # Right side: Image panel
+            html.Div([
+                html.Div([
+                    html.H4("Raw Image"),
+                    html.Img(
+                        id="clicked-image",
+                        style={
+                            "width": "300px",
+                            "height": "auto",
+                            "border": "1px solid #ccc",
+                            "padding": "5px"
+                        }
+                    )
+                ], style={"marginBottom": "20px"}),  # some spacing between images
 
-        # Image on the side
-        html.Div(
-            [
-                html.Img(
-                    id="clicked-image",
-                    style={
-                        "width": "300px",
-                        "height": "auto",
-                        "border": "1px solid #ccc",
-                        "padding": "5px"
-                    }
-                )
-            ],
-            style={"display": "inline-block", "verticalAlign": "top", "marginLeft": "20px"}
-        )
+                html.Div([
+                    html.H4("GradCAM Image"),
+                    html.Img(
+                        id="gradcam-image",
+                        style={
+                            "width": "300px",
+                            "height": "auto",
+                            "border": "1px solid #ccc",
+                            "padding": "5px"
+                        }
+                    )
+                ])
+            ], style={"width": "30%", "paddingLeft": "20px"})
+        ], style={"display": "flex", "flexDirection": "row", "alignItems": "flex-start"})
     ])
 
-    # 6) Callback to update the scatter figure whenever the L2 dropdown changes
+    # 7) Callback to update the scatter figure whenever the L2 dropdown changes
     @app.callback(
         Output("tsne-graph", "figure"),
         [Input("l2-dropdown", "value")],
         [State("full-data", "data")]
     )
     def update_figure(l2_value, stored_data):
-        # Reconstruct a DataFrame from the stored data
+        # Reconstruct a DataFrame from the stored data.
         df_full = pd.DataFrame(stored_data)
-        # Build the figure by filtering on l2_value
+        # Build the figure by filtering on l2_value.
         fig = build_figure_for_l2(df_full, l2_value, args.image_port)
         return fig
 
-    # 7) Callback to update the displayed image upon clicking a point
+    # 8) Callback to update the displayed image upon clicking a point
     @app.callback(
-        Output("clicked-image", "src"),
+        [Output("clicked-image", "src"), Output("gradcam-image", "src")],
         [Input("tsne-graph", "clickData")]
     )
-    def update_image(clickData):
+    def update_images(clickData):
         if clickData and "points" in clickData:
-            # We only allow single selection, so take the first clicked point
             point = clickData["points"][0]
-            img_url = point["customdata"][0]  # custom_data = ["img_url"]
-            return img_url
-        return None
+            raw_img_url = point["customdata"][0]  # The raw image URL
+            filename = point["customdata"][1]     # The raw image's filename
+            # Construct GradCAM image URL (assumes gradcam images follow the naming "cam_XXX.jpg")
+            base = raw_img_url.rsplit('/', 1)[0]  # e.g. "http://localhost:8888"
+            gradcam_img_url = f"{base}/cam_{filename}"
+            return raw_img_url, gradcam_img_url
+        return None, None
 
-    # 8) Run
+
+    # 9) Run
     print(f"[INFO] Starting Dash app on http://127.0.0.1:{dash_port}")
     app.run_server(debug=True, port=dash_port)
 
