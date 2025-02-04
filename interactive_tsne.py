@@ -22,59 +22,43 @@ def serve_folder(folder, port=8888):
         print(f"Serving files from '{folder}' at http://127.0.0.1:{port}")
         httpd.serve_forever()
 
-def build_figure_for_l2(df_all, l2_word_label, image_port):
-    """
-    Given the full DataFrame (df_full), filter rows for the specified L2 label,
-    then build and return a Plotly scatter figure with color-coded word labels
-    and custom shapes.
-    """
 
-    # If l2_label is None or "ALL", skip filtering. Otherwise, filter the DataFrame
+def build_figure_for_l2(df_all, l2_word_label, image_port):
+    # Filter based on L2 label if provided.
     if l2_word_label is None or l2_word_label == "ALL":
         df_filtered = df_all.copy()
     else:
-        # Convert the chosen L2 word label to numeric
-        # e.g. "DOG_FAMILY" -> 1
         selected_l2_label = NAME_LABEL_L2.get(l2_word_label)
         if selected_l2_label is None:
-            return px.scatter()  # Return empty figure if unrecognized
+            return px.scatter()  # Return an empty figure if unrecognized
 
-        # Build a set of L3 numeric IDs that belong to that L2
-        l3_ids = []
-        for l3_word, (l3_label, parent_l2_label) in REASSIGN_NAME_LABEL_L3L2.items():
-            if parent_l2_label == selected_l2_label:
-                l3_ids.append(l3_label)
-
-        # Filter to only those L3 IDs
+        l3_ids = [l3_label for l3_word, (l3_label, parent_l2_label) in REASSIGN_NAME_LABEL_L3L2.items()
+                  if parent_l2_label == selected_l2_label]
         df_filtered = df_all[df_all['label'].isin(l3_ids)]
 
-    # Prepare hover data: by default show filename and ground-truth word label.
+    # Define which columns to include in the Plotly hover tooltip.
     hover_columns = ["filename", "word_label"]
-    # If predictions have been merged, add prediction details.
+
+    # Build custom_data list. Note: We add "word_label" so that the ground-truth label is available.
+    custom_data_cols = ["img_url", "filename", "word_label"]
+
+    # If prediction info is present in the DataFrame, extend custom_data with those columns.
     if "predicted_word_label" in df_filtered.columns:
-        hover_columns.extend([
+        custom_data_cols.extend([
             "predicted_word_label", "top3_label_1", "top3_prob_1",
             "top3_label_2", "top3_prob_2", "top3_label_3", "top3_prob_3"
         ])
 
-    # Build the figure. We'll:
-    # - color by L3 word_label
-    # - use symbol by L3 word_label (for varied shapes)
-    # - have hover_data show filename, word_label
-    # - store img_url in custom_data so we can retrieve the image on click
     fig = px.scatter(
         df_filtered,
         x="tsne_x",
         y="tsne_y",
-        color="word_label",         # color by the word label
-        symbol="word_label",        # shape by word label
+        color="word_label",
+        symbol="word_label",
         hover_data=hover_columns,
-        custom_data=["img_url"],    # for retrieving image on click
-        # You could also adjust the size if you have a column for that
-        # size="some_size_column",
+        custom_data=custom_data_cols
     )
 
-    # Tweak layout
     fig.update_layout(
         title=f"t-SNE (L2: {l2_word_label}) - {len(df_filtered)} points" if l2_word_label else "t-SNE (All data)",
         legend_title="L3 Word Label"
@@ -218,11 +202,11 @@ def main():
     # 6) Create the Dash app
     app = Dash(__name__)
 
-    # We'll store the entire df in a dcc.Store so the callback can filter it.
-    # Alternatively, we could just keep it in a global var, but let's be "clean."
+    # Layout with a flex container:
+    # Left column: t-SNE graph.
+    # Right column: Hover information panel on top and image panels below.
     app.layout = html.Div([
         dcc.Store(id="full-data", data=df.to_dict(orient="records")),
-
         html.H3("Select L2 Class:"),
         dcc.Dropdown(
             id="l2-dropdown",
@@ -230,83 +214,110 @@ def main():
                 {"label": l2_name, "value": l2_name}
                 for l2_name in NAME_LABEL_L2.keys()
             ],
-            value="ALL",  # default to showing all
+            value="ALL",
             clearable=False,
             style={"width": "300px"}
         ),
-
-        # Use a flex container to arrange the graph and the image panel side by side.
         html.Div([
-            # Left side: t-SNE graph
+            # Left: t-SNE graph.
             html.Div(
                 dcc.Graph(
                     id="tsne-graph",
                     style={"width": "100%", "height": "800px"}
                 ),
-                style={"width": "70%"}  # adjust the width as needed
+                style={"width": "70%"}
             ),
-            # Right side: Image panel
+            # Right: Hover info and image panels.
             html.Div([
+                # Hover Information Panel
+                html.Div(
+                    id="hover-info",
+                    children="Hover over a point to see details.",
+                    style={"marginBottom": "20px", "border": "1px solid #ccc", "padding": "10px"}
+                ),
+                # Image Panels
                 html.Div([
-                    html.H4("Raw Image"),
-                    html.Img(
-                        id="clicked-image",
-                        style={
-                            "width": "300px",
-                            "height": "auto",
-                            "border": "1px solid #ccc",
-                            "padding": "5px"
-                        }
-                    )
-                ], style={"marginBottom": "20px"}),  # some spacing between images
-
-                html.Div([
-                    html.H4("GradCAM Image"),
-                    html.Img(
-                        id="gradcam-image",
-                        style={
-                            "width": "300px",
-                            "height": "auto",
-                            "border": "1px solid #ccc",
-                            "padding": "5px"
-                        }
-                    )
+                    html.Div([
+                        html.H4("Raw Image"),
+                        html.Img(
+                            id="clicked-image",
+                            style={
+                                "width": "300px",
+                                "height": "auto",
+                                "border": "1px solid #ccc",
+                                "padding": "5px"
+                            }
+                        )
+                    ], style={"marginBottom": "20px"}),
+                    html.Div([
+                        html.H4("GradCAM Image"),
+                        html.Img(
+                            id="gradcam-image",
+                            style={
+                                "width": "300px",
+                                "height": "auto",
+                                "border": "1px solid #ccc",
+                                "padding": "5px"
+                            }
+                        )
+                    ])
                 ])
             ], style={"width": "30%", "paddingLeft": "20px"})
         ], style={"display": "flex", "flexDirection": "row", "alignItems": "flex-start"})
     ])
 
-    # 7) Callback to update the scatter figure whenever the L2 dropdown changes
+    # Callback to update the scatter figure.
     @app.callback(
         Output("tsne-graph", "figure"),
         [Input("l2-dropdown", "value")],
         [State("full-data", "data")]
     )
     def update_figure(l2_value, stored_data):
-        # Reconstruct a DataFrame from the stored data.
         df_full = pd.DataFrame(stored_data)
-        # Build the figure by filtering on l2_value.
         fig = build_figure_for_l2(df_full, l2_value, args.image_port)
         return fig
 
-    # 8) Callback to update the displayed image upon clicking a point
+    # Combined callback: When a point is clicked, update images and the information panel.
     @app.callback(
-        [Output("clicked-image", "src"), Output("gradcam-image", "src")],
+        [Output("clicked-image", "src"),
+         Output("gradcam-image", "src"),
+         Output("hover-info", "children")],
         [Input("tsne-graph", "clickData")]
     )
-    def update_images(clickData):
+    def update_click_info(clickData):
         if clickData and "points" in clickData:
             point = clickData["points"][0]
-            raw_img_url = point["customdata"][0]  # The raw image URL
-            filename = point["customdata"][1]     # The raw image's filename
-            # Construct GradCAM image URL (assumes gradcam images follow the naming "cam_XXX.jpg")
-            base = raw_img_url.rsplit('/', 1)[0]  # e.g. "http://localhost:8888"
+            cd = point["customdata"]
+            # Custom data indexing:
+            # cd[0] = raw image URL
+            # cd[1] = filename
+            # cd[2] = ground-truth label (word_label)
+            # If available:
+            # cd[3] = predicted_word_label
+            # cd[4] = top3_label_1, cd[5] = top3_prob_1,
+            # cd[6] = top3_label_2, cd[7] = top3_prob_2,
+            # cd[8] = top3_label_3, cd[9] = top3_prob_3.
+            raw_img_url = cd[0]
+            filename = cd[1]
+            ground_truth = cd[2]
+            # Construct the GradCAM image URL (assumes naming like "cam_XXX" where XXX is the filename).
+            base = raw_img_url.rsplit('/', 1)[0]
             gradcam_img_url = f"{base}/cam_{filename}"
-            return raw_img_url, gradcam_img_url
-        return None, None
 
+            # Build the information panel content.
+            info = [
+                html.P(f"Image: {filename}"),
+                html.P(f"Ground Truth: {ground_truth}")
+            ]
+            if len(cd) >= 10:
+                info.append(html.P(f"Predicted: {cd[3]}"))
+                info.append(html.P(f"Top1: {cd[4]} ({cd[5]})"))
+                info.append(html.P(f"Top2: {cd[6]} ({cd[7]})"))
+                info.append(html.P(f"Top3: {cd[8]} ({cd[9]})"))
+            return raw_img_url, gradcam_img_url, info
+        # Default values when no point has been clicked.
+        return "", "", "Click a point to see details."
 
-    # 9) Run
     print(f"[INFO] Starting Dash app on http://127.0.0.1:{dash_port}")
     app.run_server(debug=True, port=dash_port)
 
