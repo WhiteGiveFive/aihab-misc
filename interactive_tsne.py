@@ -11,7 +11,6 @@ from dash import Dash, dcc, html, State, Input, Output
 # from dash.dependencies import Input, Output
 from name_lib import *
 
-
 def serve_folder(folder, port=8888):
     """
     Serve all files in 'folder' on the given 'port'
@@ -22,27 +21,38 @@ def serve_folder(folder, port=8888):
         print(f"Serving files from '{folder}' at http://127.0.0.1:{port}")
         httpd.serve_forever()
 
-
-def build_figure_for_l2(df_all, l2_word_label, image_port):
-    # Filter based on L2 label if provided.
+def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
+    """
+    Given the full DataFrame (df_all), filter rows for the specified L2 label,
+    then build and return a Plotly scatter figure with proper x,y axes and labels
+    based on the embedding type (t-SNE or UMAP).
+    """
+    # Filter based on L2 label.
     if l2_word_label is None or l2_word_label == "ALL":
         df_filtered = df_all.copy()
     else:
         selected_l2_label = NAME_LABEL_L2.get(l2_word_label)
         if selected_l2_label is None:
-            return px.scatter()  # Return an empty figure if unrecognized
+            return px.scatter()  # Return empty figure if unrecognized
 
-        l3_ids = [l3_label for l3_word, (l3_label, parent_l2_label) in REASSIGN_NAME_LABEL_L3L2.items()
-                  if parent_l2_label == selected_l2_label]
+        l3_ids = [
+            l3_label for l3_word, (l3_label, parent_l2_label) in REASSIGN_NAME_LABEL_L3L2.items()
+            if parent_l2_label == selected_l2_label
+        ]
         df_filtered = df_all[df_all['label'].isin(l3_ids)]
 
-    # Define which columns to include in the Plotly hover tooltip.
+    # Select coordinate columns based on embedding type.
+    if embedding == "umap":
+        xcol = "umap_x"
+        ycol = "umap_y"
+    else:
+        xcol = "tsne_x"
+        ycol = "tsne_y"
+
+    # Define hover info and custom data.
     hover_columns = ["filename", "word_label"]
-
-    # Build custom_data list. Note: We add "word_label" so that the ground-truth label is available.
+    # custom_data: we include image URL, filename, and ground-truth label.
     custom_data_cols = ["img_url", "filename", "word_label"]
-
-    # If prediction info is present in the DataFrame, extend custom_data with those columns.
     if "predicted_word_label" in df_filtered.columns:
         custom_data_cols.extend([
             "predicted_word_label", "top3_label_1", "top3_prob_1",
@@ -51,51 +61,40 @@ def build_figure_for_l2(df_all, l2_word_label, image_port):
 
     fig = px.scatter(
         df_filtered,
-        x="tsne_x",
-        y="tsne_y",
+        x=xcol,
+        y=ycol,
         color="word_label",
         symbol="word_label",
         hover_data=hover_columns,
         custom_data=custom_data_cols
     )
 
+    # Use the embedding type in the title and axis labels.
+    title_prefix = embedding.upper()  # "UMAP" or "TSNE"
+    if l2_word_label and l2_word_label != "ALL":
+        title = f"{title_prefix} (L2: {l2_word_label}) - {len(df_filtered)} points"
+    else:
+        title = f"{title_prefix} (All data)"
     fig.update_layout(
-        title=f"t-SNE (L2: {l2_word_label}) - {len(df_filtered)} points" if l2_word_label else "t-SNE (All data)",
+        title=title,
         legend_title="L3 Word Label"
     )
+    fig.update_xaxes(title=f"{title_prefix} X")
+    fig.update_yaxes(title=f"{title_prefix} Y")
     return fig
-
-def filter_df(df_all, l2_word_label):
-    """
-    Selecting data points with l2_cls
-    :param df_all:
-    :param l2_word_label:
-    :return:
-    """
-    if l2_word_label not in NAME_LABEL_L2:
-        raise ValueError(f"{l2_word_label} not recognized for L2 class.")
-    selected_l2_label = NAME_LABEL_L2[l2_word_label]
-
-    # Build a set of L3 numeric IDs that belong to that L2
-    l3_ids = []
-    for l3_word_label, (l3_label, l2_label) in REASSIGN_NAME_LABEL_L3L2.items():
-        if l2_label == selected_l2_label:
-            l3_ids.append(l3_label)
-
-    df = df_all[df_all['label'].isin(l3_ids)]
-    print(f"[INFO] Filtered to L2 label '{l2_word_label}' with {len(df)} samples.")
-    return df
 
 def main():
     # 1) PARSE COMMAND-LINE ARGUMENTS
     parser = argparse.ArgumentParser(
-        description="t-SNE Viewer with local image hosting using Dash."
+        description="t-SNE/UMAP Viewer with local image hosting using Dash."
     )
     parser.add_argument(
-        "--tsne-results",
+        "--emb-results",  # You can also pass a UMAP file here.
         type=str,
         default="tsne_results.csv",
-        help="Path to the CSV file containing t-SNE results (columns: tsne_x, tsne_y, label, filename)."
+        help="Path to the CSV file containing embedding results. "
+             "For t-SNE, expected columns: tsne_x, tsne_y, label, filename. "
+             "For UMAP, expected columns: umap_x, umap_y, label, filename."
     )
     parser.add_argument(
         "--image-folder",
@@ -118,35 +117,38 @@ def main():
     parser.add_argument(
         "--show-cls",
         default='Grassland',
-        help="Name of L2 Class (e.g., Grassland).")
-
-    # New optional arguments for predictions CSV files
-    parser.add_argument(
-        "--corcls-results",
-        type=str,
-        default=None,
-        help="Path to first CSV file containing correct model predictions."
+        help="Name of L2 Class (e.g., Grassland)."
     )
     parser.add_argument(
-        "--miscls-results",
+        "--predictions-csv1",
         type=str,
         default=None,
-        help="Path to second CSV file containing misclassified model predictions."
+        help="Path to first predictions CSV file."
+    )
+    parser.add_argument(
+        "--predictions-csv2",
+        type=str,
+        default=None,
+        help="Path to second predictions CSV file."
     )
 
     args = parser.parse_args()
 
-    tsne_csv = os.path.abspath(args.tsne_results)
-    image_server_port = args.image_port
-    dash_port = args.dash_port
+    # 2) LOAD EMBEDDING RESULTS CSV
+    emb_csv = os.path.abspath(args.emb_results)
+    if not os.path.exists(emb_csv):
+        raise FileNotFoundError(f"[ERROR] Results file not found: {emb_csv}")
 
-    # 2) LOAD T-SNE RESULTS (CSV)
-    if not os.path.exists(tsne_csv):
-        raise FileNotFoundError(f"[ERROR] t-SNE results file not found: {tsne_csv}")
+    df = pd.read_csv(emb_csv)
+    required_cols = {"label", "filename"}
+    if "umap_x" in df.columns and "umap_y" in df.columns:
+        embedding = "umap"
+        required_cols.update({"umap_x", "umap_y"})
+    else:
+        # Default to t-SNE
+        embedding = "tsne"
+        required_cols.update({"tsne_x", "tsne_y"})
 
-    df = pd.read_csv(tsne_csv)
-
-    required_cols = {"tsne_x", "tsne_y", "label", "filename"}
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"CSV is missing required columns: {missing}")
@@ -154,33 +156,23 @@ def main():
     # 3) Create a 'word_label' column from numeric L3 'label'
     df["word_label"] = df["label"].map(REASSIGN_LABEL_NAME_L3)
 
-    # 4) Create an 'img_url' column for the samples
-    # Build the image URL from your local server
-    # e.g. http://localhost:8888/ + filename
-    # base_url = f"http://127.0.0.1:{image_server_port}/"
-    base_url = f"http://localhost:{image_server_port}/"
+    # 4) Create an 'img_url' column for the samples using the image server URL.
+    base_url = f"http://localhost:{args.image_port}/"
     df["img_url"] = base_url + df["filename"].astype(str)
 
-    # 5) Merge predictions CSVs if provided.
-    # Both predictions-csv files have the same column headers:
-    # "file_name, ground_truth_num_label, ground_truth_word_label, predicted_label, predicted_word_label, dataset,
-    #  top3_label_1, top3_prob_1, top3_label_2, top3_prob_2, top3_label_3, top3_prob_3"
-    # and they list disjoint subsets of the full image set.
-    # Here we combine them (if provided) and merge with the main DataFrame.
+    # 5) Merge predictions CSVs if provided (same as before)
     pred_dfs = []
-    if args.corcls_results:
-        pred_csv1 = os.path.abspath(args.corcls_results)
+    if args.predictions_csv1:
+        pred_csv1 = os.path.abspath(args.predictions_csv1)
         if not os.path.exists(pred_csv1):
             raise FileNotFoundError(f"[ERROR] Predictions CSV1 file not found: {pred_csv1}")
         df_pred1 = pd.read_csv(pred_csv1)
-        # Convert top3 numeric labels to word labels.
         for col in ["top3_label_1", "top3_label_2", "top3_label_3"]:
             if col in df_pred1.columns:
                 df_pred1[col] = df_pred1[col].map(REASSIGN_LABEL_NAME_L3)
         pred_dfs.append(df_pred1)
-
-    if args.miscls_results:
-        pred_csv2 = os.path.abspath(args.miscls_results)
+    if args.predictions_csv2:
+        pred_csv2 = os.path.abspath(args.predictions_csv2)
         if not os.path.exists(pred_csv2):
             raise FileNotFoundError(f"[ERROR] Predictions CSV2 file not found: {pred_csv2}")
         df_pred2 = pd.read_csv(pred_csv2)
@@ -188,23 +180,15 @@ def main():
             if col in df_pred2.columns:
                 df_pred2[col] = df_pred2[col].map(REASSIGN_LABEL_NAME_L3)
         pred_dfs.append(df_pred2)
-
     if pred_dfs:
-        # Concatenate the predictions (they are disjoint subsets).
         df_pred_all = pd.concat(pred_dfs, ignore_index=True)
-        # Merge predictions with the main DataFrame on filename.
-        # t-SNE CSV uses "filename" and predictions CSV uses "file_name".
         df = df.merge(df_pred_all, left_on="filename", right_on="file_name", how="left")
-        # Optionally drop the redundant "file_name" column.
         if "file_name" in df.columns:
             df = df.drop(columns=["file_name"])
 
-    # 6) Create the Dash app
+    # 6) Create the Dash app layout.
     app = Dash(__name__)
 
-    # Layout with a flex container:
-    # Left column: t-SNE graph.
-    # Right column: Hover information panel on top and image panels below.
     app.layout = html.Div([
         dcc.Store(id="full-data", data=df.to_dict(orient="records")),
         html.H3("Select L2 Class:"),
@@ -219,23 +203,21 @@ def main():
             style={"width": "300px"}
         ),
         html.Div([
-            # Left: t-SNE graph.
+            # Left: embedding figure.
             html.Div(
                 dcc.Graph(
-                    id="tsne-graph",
+                    id="tsne-graph",  # The graph id stays the same.
                     style={"width": "100%", "height": "800px"}
                 ),
                 style={"width": "70%"}
             ),
-            # Right: Hover info and image panels.
+            # Right: Combined information and image panels.
             html.Div([
-                # Hover Information Panel
                 html.Div(
                     id="hover-info",
-                    children="Hover over a point to see details.",
+                    children="Click a point to see details.",
                     style={"marginBottom": "20px", "border": "1px solid #ccc", "padding": "10px"}
                 ),
-                # Image Panels
                 html.Div([
                     html.Div([
                         html.H4("Raw Image"),
@@ -266,7 +248,7 @@ def main():
         ], style={"display": "flex", "flexDirection": "row", "alignItems": "flex-start"})
     ])
 
-    # Callback to update the scatter figure.
+    # 7) Callback to update the embedding figure.
     @app.callback(
         Output("tsne-graph", "figure"),
         [Input("l2-dropdown", "value")],
@@ -274,10 +256,10 @@ def main():
     )
     def update_figure(l2_value, stored_data):
         df_full = pd.DataFrame(stored_data)
-        fig = build_figure_for_l2(df_full, l2_value, args.image_port)
+        fig = build_figure_for_l2(df_full, l2_value, args.image_port, embedding)
         return fig
 
-    # Combined callback: When a point is clicked, update images and the information panel.
+    # 8) Combined callback to update images and info panel on click.
     @app.callback(
         [Output("clicked-image", "src"),
          Output("gradcam-image", "src"),
@@ -289,22 +271,13 @@ def main():
             point = clickData["points"][0]
             cd = point["customdata"]
             # Custom data indexing:
-            # cd[0] = raw image URL
-            # cd[1] = filename
-            # cd[2] = ground-truth label (word_label)
-            # If available:
-            # cd[3] = predicted_word_label
-            # cd[4] = top3_label_1, cd[5] = top3_prob_1,
-            # cd[6] = top3_label_2, cd[7] = top3_prob_2,
-            # cd[8] = top3_label_3, cd[9] = top3_prob_3.
+            # cd[0] = raw image URL, cd[1] = filename, cd[2] = ground-truth (word_label),
+            # and if available, cd[3] ... cd[9] = prediction info.
             raw_img_url = cd[0]
             filename = cd[1]
             ground_truth = cd[2]
-            # Construct the GradCAM image URL (assumes naming like "cam_XXX" where XXX is the filename).
             base = raw_img_url.rsplit('/', 1)[0]
             gradcam_img_url = f"{base}/cam_{filename}"
-
-            # Build the information panel content.
             info = [
                 html.P(f"Image: {filename}"),
                 html.P(f"Ground Truth: {ground_truth}")
@@ -315,12 +288,10 @@ def main():
                 info.append(html.P(f"Top2: {cd[6]} ({cd[7]})"))
                 info.append(html.P(f"Top3: {cd[8]} ({cd[9]})"))
             return raw_img_url, gradcam_img_url, info
-        # Default values when no point has been clicked.
         return "", "", "Click a point to see details."
 
-    print(f"[INFO] Starting Dash app on http://127.0.0.1:{dash_port}")
-    app.run_server(debug=True, port=dash_port)
-
+    print(f"[INFO] Starting Dash app on http://127.0.0.1:{args.dash_port}")
+    app.run_server(debug=True, port=args.dash_port)
 
 if __name__ == "__main__":
     main()
