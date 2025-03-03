@@ -71,3 +71,17 @@ REASSIGN_LABEL_NAME_L3 = {
     18: 'Supra-littoral Rock',
     19: 'Supra-littoral Sediment',
 }
+
+L2_L3_NAME = {
+    'Urban': ['Urban'],
+    'Woodland and forest': ['Broadleaved Mixed and Yew Woodland', 'Coniferous Woodland'],
+    'Cropland': ['Arable and Horticulture'],
+    'Grassland': ['Improved Grassland', 'Neutral Grassland', 'Calcareous Grassland', 'Acid Grassland', 'Bracken'],
+    'Heathland and shrub': ['Dwarf Shrub Heath'],
+    'Wetland': ['Fen, Marsh, Swamp', 'Bog'],
+    'Marine inlets and transitional waters': ['Littoral Rock', 'Littoral Sediment'],
+    'Sparsely vegetated land': ['Inland Rock', 'Supra-littoral Rock', 'Supra-littoral Sediment'],
+    'Rivers and lakes': ['Standing Open Waters and Canals'],
+    'Sea': ['Sea'],
+    'Montane': ['Montane']
+}
