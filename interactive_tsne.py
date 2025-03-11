@@ -11,6 +11,11 @@ from dash import Dash, dcc, html, State, Input, Output
 # from dash.dependencies import Input, Output
 from name_lib import *
 
+# Declare global variables at the module level.
+GLOBAL_LABELS = None
+GLOBAL_COLOR_MAP = None
+GLOBAL_SYMBOL_MAP = None
+
 def serve_folder(folder, port=8888):
     """
     Serve all files in 'folder' on the given 'port'
@@ -59,31 +64,81 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
             "top3_label_2", "top3_prob_2", "top3_label_3", "top3_prob_3"
         ])
 
+    # Define custom color and marker mappings.
+    colors = px.colors.qualitative.Dark24
+    # Define marker symbols without triangle-related ones.
+    marker_symbols = [
+        "circle", "square", "diamond", "cross", "x",
+        "star", "pentagon", "hexagon", "hexagram"
+    ]
+
+    # Even if df_filtered has only a subset of classes, the mapping is consistent.
+    symbol_sequence = [GLOBAL_SYMBOL_MAP[label] for label in GLOBAL_LABELS]
+
+    # Create the scatter plot with the custom mapping.
     fig = px.scatter(
         df_filtered,
         x=xcol,
         y=ycol,
         color="word_label",
         symbol="word_label",
+        category_orders={"word_label": GLOBAL_LABELS},
+        color_discrete_map=GLOBAL_COLOR_MAP,
+        symbol_sequence=symbol_sequence,
         hover_data=hover_columns,
         custom_data=custom_data_cols
     )
+    fig.update_layout(
+        plot_bgcolor="white",  # the plotting area
+        paper_bgcolor="white"  # the area surrounding the plot
+    )
+    fig.update_xaxes(showgrid=True, gridcolor='lightgray', gridwidth=1)
+    fig.update_yaxes(showgrid=True, gridcolor='lightgray', gridwidth=1)
 
     # Use the embedding type in the title and axis labels.
     title_prefix = embedding.upper()  # "UMAP" or "TSNE"
     if l2_word_label and l2_word_label != "ALL":
-        title = f"{title_prefix} (L2: {l2_word_label}) - {len(df_filtered)} points"
+        title = f"{title_prefix} ({l2_word_label}) - {len(df_filtered)} points"
     else:
-        title = f"{title_prefix} (All data)"
+        title = f"{title_prefix} (All Classes)"
     fig.update_layout(
         title=title,
-        legend_title="L3 Word Label"
+        legend_title="Labels"
     )
     fig.update_xaxes(title=f"{title_prefix} X")
     fig.update_yaxes(title=f"{title_prefix} Y")
+
+    # Legend setup
+    # fig.update_layout(showlegend=False)
+    fig.update_layout(
+        legend=dict(
+            x=0.80,  # Position from the left side of the plot area (0 to 1)
+            y=0.15,  # Position from the bottom (0) to the top (1)
+            xanchor="left",  # Anchor the legend's x position to its left side
+            yanchor="top",  # Anchor the legend's y position to its top
+            bgcolor="rgba(255,255,255,0.5)",  # Optional: semi-transparent background for readability
+            bordercolor="Black",
+            borderwidth=1
+        )
+    )
+    # Control axis ranges based on the selected L2 filter.
+    if l2_word_label == "ALL":
+        fig.update_xaxes(range=[-2.5, 17])
+        fig.update_yaxes(range=[-3, 7])
+    elif l2_word_label == "Grassland":
+        fig.update_xaxes(range=[-2.5, 14])
+        fig.update_yaxes(range=[-3, 7])
+    elif l2_word_label == "Heathland and shrub":
+        fig.update_xaxes(range=[-3, 4])
+        fig.update_yaxes(range=[-3, 6])
+    elif l2_word_label == "Wetland":
+        fig.update_xaxes(range=[-2.5, 9])
+        fig.update_yaxes(range=[-3, 3])
+
     return fig
 
 def main():
+    global GLOBAL_LABELS, GLOBAL_COLOR_MAP, GLOBAL_SYMBOL_MAP
     # 1) PARSE COMMAND-LINE ARGUMENTS
     parser = argparse.ArgumentParser(
         description="t-SNE/UMAP Viewer with local image hosting using Dash."
@@ -155,6 +210,13 @@ def main():
 
     # 3) Create a 'word_label' column from numeric L3 'label'
     df["word_label"] = df["label"].map(REASSIGN_LABEL_NAME_L3)
+
+    # Compute the global order and mapping for all classes.
+    GLOBAL_LABELS = sorted(df["word_label"].unique())
+    colors = px.colors.qualitative.Dark24
+    marker_symbols = ["circle", "square", "diamond", "cross", "x", "star", "pentagon", "hexagon", "hexagram"]
+    GLOBAL_COLOR_MAP = {label: colors[i % len(colors)] for i, label in enumerate(GLOBAL_LABELS)}
+    GLOBAL_SYMBOL_MAP = {label: marker_symbols[i % len(marker_symbols)] for i, label in enumerate(GLOBAL_LABELS)}
 
     # 4) Create an 'img_url' column for the samples using the image server URL.
     base_url = f"http://localhost:{args.image_port}/"
