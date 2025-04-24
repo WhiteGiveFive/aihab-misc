@@ -101,10 +101,10 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
         title = f"{title_prefix} ({l2_word_label}) - {len(df_filtered)} points"
     else:
         title = f"{title_prefix} (All Classes)"
-    fig.update_layout(
-        title=title,
-        legend_title="Labels"
-    )
+    # fig.update_layout(
+    #     title=title,
+    #     legend_title="Labels"
+    # )
     fig.update_xaxes(title=f"{title_prefix} X")
     fig.update_yaxes(title=f"{title_prefix} Y")
 
@@ -112,10 +112,17 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
     # fig.update_layout(showlegend=False)
     fig.update_layout(
         legend=dict(
-            x=0.80,  # Position from the left side of the plot area (0 to 1)
-            y=0.15,  # Position from the bottom (0) to the top (1)
+            x=0.10,  # Position from the left side of the plot area (0 to 1)
+            y=0.9,  # Position from the bottom (0) to the top (1)
             xanchor="left",  # Anchor the legend's x position to its left side
             yanchor="top",  # Anchor the legend's y position to its top
+            font=dict(
+                size=18  # Change this to your desired font size
+            ),
+            title=dict(
+                text="Habitats",  # change this to your desired title
+                font=dict(size=20)  # you can adjust the title font size too
+            ),
             bgcolor="rgba(255,255,255,0.5)",  # Optional: semi-transparent background for readability
             bordercolor="Black",
             borderwidth=1
