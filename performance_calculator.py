@@ -10,8 +10,25 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
+from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, cohen_kappa_score
 
+
+def ck_score(correct_table, misclassified_table):
+    # We only care about the numeric labels for κ
+    # (you could also use the word labels if you prefer)
+    y_true_correct = correct_table['ground_truth_num_label'].astype(int)
+    y_pred_correct = correct_table['predicted_label'].astype(int)
+
+    y_true_wrong = misclassified_table['ground_truth_num_label'].astype(int)
+    y_pred_wrong = misclassified_table['predicted_label'].astype(int)
+
+    # Concatenate correct + wrong to get the full test set
+    y_true = pd.concat([y_true_correct, y_true_wrong], ignore_index=True)
+    y_pred = pd.concat([y_pred_correct, y_pred_wrong], ignore_index=True)
+
+    # Compute Cohen's kappa
+    kappa = cohen_kappa_score(y_true, y_pred)
+    return kappa
 
 def performance_calculator(result_dir):
     # Load the provided CSV files
@@ -21,6 +38,9 @@ def performance_calculator(result_dir):
     # Read the CSV files
     correctly_classified_df = pd.read_csv(correctly_classified_path)
     misclassified_df = pd.read_csv(misclassified_path)
+
+    # Calculate the Cohen's Kappa score
+    kappa_score = ck_score(correctly_classified_df, misclassified_df)
 
     # Reverse mapping for quick lookup: L3 to L2
     L3_to_L2 = {l3: l2 for l2, l3_list in L2_L3_NAME.items() for l3 in l3_list}
@@ -68,7 +88,7 @@ def performance_calculator(result_dir):
 
     # Convert results to a DataFrame for better visualization
     l2_metrics_df = pd.DataFrame.from_dict(L2_metrics, orient='index')
-    return l2_metrics_df
+    return l2_metrics_df, kappa_score
 
 
 def plot_cm(cm_path, class_names: list, normalized: bool = False) -> None:
@@ -276,9 +296,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main_result_dir = args.result_dir
-    l2_metrics_df = performance_calculator(main_result_dir)
+    l2_metrics_df, kappa_score = performance_calculator(main_result_dir)
     # tools.display_dataframe_to_user(name="L2 Classification Metrics", dataframe=l2_metrics_df)
     print(l2_metrics_df)
+    print(f'The kappa score is {kappa_score}.')
 
     # # Draw the CM for the main experiment
     # class_names = list(REASSIGN_LABEL_NAME_L3.values())
@@ -291,4 +312,4 @@ if __name__ == "__main__":
     # compare_cm(main_cm_path, compared_cm_path, class_names, normalized=True)
 
     # Evaluate the clustering performance
-    cluster_quality(main_result_dir)
+    # cluster_quality(main_result_dir)
