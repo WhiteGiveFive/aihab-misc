@@ -1,5 +1,5 @@
 """
-This program shows the individual Precision, Recall, and F1 score based on L2 labels.
+This program shows the individual Precision, Recall, and F1 score, kappa score based on L2 labels.
 """
 
 import pandas as pd
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main_result_dir = args.result_dir
+    main_result_dir = args.compared_dir
     l2_metrics_df, kappa_score = performance_calculator(main_result_dir)
     # tools.display_dataframe_to_user(name="L2 Classification Metrics", dataframe=l2_metrics_df)
     print(l2_metrics_df)
