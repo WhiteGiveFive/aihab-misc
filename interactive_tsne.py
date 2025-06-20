@@ -92,6 +92,9 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
         plot_bgcolor="white",  # the plotting area
         paper_bgcolor="white"  # the area surrounding the plot
     )
+    # Increase marker (dot) size
+    fig.update_traces(marker=dict(size=8, symbol='circle', opacity=0.8))
+
     fig.update_xaxes(showgrid=True, gridcolor='lightgray', gridwidth=1)
     fig.update_yaxes(showgrid=True, gridcolor='lightgray', gridwidth=1)
 
@@ -105,17 +108,23 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
     #     title=title,
     #     legend_title="Labels"
     # )
-    fig.update_xaxes(title=f"{title_prefix} X")
-    fig.update_yaxes(title=f"{title_prefix} Y")
+    fig.update_xaxes(
+        title=dict(text=f"{title_prefix} X", font=dict(size=25)),
+        tickfont=dict(size=18)
+    )
+    fig.update_yaxes(
+        title=dict(text=f"{title_prefix} Y", font=dict(size=25)),
+        tickfont=dict(size=18)
+    )
 
     # Legend setup
-    # fig.update_layout(showlegend=False)
+    fig.update_layout(showlegend=False)
     fig.update_layout(
         legend=dict(
-            x=0.10,  # Position from the left side of the plot area (0 to 1)
-            y=0.9,  # Position from the bottom (0) to the top (1)
-            xanchor="left",  # Anchor the legend's x position to its left side
-            yanchor="top",  # Anchor the legend's y position to its top
+            x=0.99,  # Position from the left side of the plot area (0 to 1)
+            y=0.3,  # Position from the bottom (0) to the top (1)
+            xanchor="right",  # Anchor the legend's x position to its left side
+            yanchor="bottom",  # Anchor the legend's y position to its top
             font=dict(
                 size=18  # Change this to your desired font size
             ),
@@ -130,17 +139,17 @@ def build_figure_for_l2(df_all, l2_word_label, image_port, embedding="tsne"):
     )
     # Control axis ranges based on the selected L2 filter.
     if l2_word_label == "ALL":
-        fig.update_xaxes(range=[-2.5, 17])
-        fig.update_yaxes(range=[-3, 7])
+        fig.update_xaxes(range=[-2.5, 14])
+        fig.update_yaxes(range=[-2.5, 10])
     elif l2_word_label == "Grassland":
         fig.update_xaxes(range=[-2.5, 14])
-        fig.update_yaxes(range=[-3, 7])
+        fig.update_yaxes(range=[-2.5, 7])
     elif l2_word_label == "Heathland and shrub":
-        fig.update_xaxes(range=[-3, 4])
-        fig.update_yaxes(range=[-3, 6])
+        fig.update_xaxes(range=[-2.5, 4])
+        fig.update_yaxes(range=[-2.5, 6])
     elif l2_word_label == "Wetland":
         fig.update_xaxes(range=[-2.5, 9])
-        fig.update_yaxes(range=[-3, 3])
+        fig.update_yaxes(range=[-2.5, 3])
 
     return fig
 
@@ -360,7 +369,7 @@ def main():
         return "", "", "Click a point to see details."
 
     print(f"[INFO] Starting Dash app on http://127.0.0.1:{args.dash_port}")
-    app.run_server(debug=True, port=args.dash_port)
+    app.run(debug=True, port=args.dash_port)
 
 if __name__ == "__main__":
     main()
