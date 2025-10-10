@@ -30,5 +30,7 @@ Here, `--image-folder ../aihab/data/CS_Xplots_2019_2023` should be the absolute 
 Simply run for instance, `python performance_calculator.py --result-dir data/cs_20192023_swintbase_img384` to show the 
 
 ## Calculate performance of human expert
-`python human_performance_v2.py --expert1 human_vs_ai/Lainie_annotations.csv --expert2 human_vs_ai/lucridd_annotations_all_cleaned.csv --model_ok data/cs_20192023_swint_supcon_pretrain_baseline/correctly_classified_samples_cvtest.csv --model_err data/cs_20192023_swint_supcon_pretrain_baseline/misclassified_samples_cvtest.csv --truth human_vs_ai/metadata.csv
+`python human_performance_v2.py --expert1 human_vs_ai/Lainie_annotations.csv --expert2 human_vs_ai/lucridd_annotations_all_cleaned.csv
+ --model_ok data/cs_20192023_swint_supcon_pretrain_baseline/correctly_classified_samples_cvtest.csv --model_err
+  data/cs_20192023_swint_supcon_pretrain_baseline/misclassified_samples_cvtest.csv --truth human_vs_ai/metadata.csv
 `

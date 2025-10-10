@@ -10,7 +10,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, cohen_kappa_score
+from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, cohen_kappa_score, matthews_corrcoef
 
 
 def ck_score(correct_table, misclassified_table):
@@ -30,6 +30,22 @@ def ck_score(correct_table, misclassified_table):
     kappa = cohen_kappa_score(y_true, y_pred)
     return kappa
 
+def mcc_score(correct_table, misclassified_table):
+    # pull out the numeric true/pred labels exactly as in ck_score
+    y_true_correct = correct_table['ground_truth_num_label'].astype(int)
+    y_pred_correct = correct_table['predicted_label'].astype(int)
+
+    y_true_wrong = misclassified_table['ground_truth_num_label'].astype(int)
+    y_pred_wrong = misclassified_table['predicted_label'].astype(int)
+
+    # concatenate to recover the full test‐set ordering
+    y_true = pd.concat([y_true_correct, y_true_wrong], ignore_index=True)
+    y_pred = pd.concat([y_pred_correct, y_pred_wrong], ignore_index=True)
+
+    # compute the multiclass MCC
+    mcc = matthews_corrcoef(y_true, y_pred)
+    return mcc
+
 def performance_calculator(result_dir):
     # Load the provided CSV files
     correctly_classified_path = os.path.join(result_dir, 'correctly_classified_samples_cvtest.csv')
@@ -39,8 +55,9 @@ def performance_calculator(result_dir):
     correctly_classified_df = pd.read_csv(correctly_classified_path)
     misclassified_df = pd.read_csv(misclassified_path)
 
-    # Calculate the Cohen's Kappa score
+    # Calculate the Cohen's Kappa score and
     kappa_score = ck_score(correctly_classified_df, misclassified_df)
+    mcc = mcc_score(correctly_classified_df, misclassified_df)
 
     # Reverse mapping for quick lookup: L3 to L2
     L3_to_L2 = {l3: l2 for l2, l3_list in L2_L3_NAME.items() for l3 in l3_list}
@@ -88,10 +105,10 @@ def performance_calculator(result_dir):
 
     # Convert results to a DataFrame for better visualization
     l2_metrics_df = pd.DataFrame.from_dict(L2_metrics, orient='index')
-    return l2_metrics_df, kappa_score
+    return l2_metrics_df, kappa_score, mcc
 
 
-def plot_cm(cm_path, class_names: list, normalized: bool = False) -> None:
+def plot_cm(cm_path, class_names: list, normalized: bool = False, remove_empty: bool = True) -> None:
     def _custom_format(x):
         """
         Custom formatting for the confusion matrix.
@@ -104,6 +121,12 @@ def plot_cm(cm_path, class_names: list, normalized: bool = False) -> None:
             return f'{x:.2f}'
 
     cm = np.load(cm_path)
+    # Identify & drop any rows that are entirely zero
+    if remove_empty:
+        nonempty_mask = cm.any(axis=1)  # True for any row with at least one non-zero
+        cm = cm[nonempty_mask][:, nonempty_mask]
+        class_names = [name for name, keep in zip(class_names, nonempty_mask) if keep]
+
     # Set up annotations based on whether it's normalized or not
     if normalized:
         annot_data = np.array([[_custom_format(val) for val in row] for row in cm])
@@ -170,6 +193,8 @@ def compare_cm(cm1_path, cm2_path, class_names: list, normalized: bool = False) 
 
     # Compute the difference (delta) between the two CMs: Model2 - Model1.
     delta = cm2 - cm1
+    # Zero out negligible deltas
+    delta = np.where(np.abs(delta) < 0.01, 0, delta)
 
     # Prepare annotations.
     # For the first CM, we keep the original annotations.
@@ -207,33 +232,51 @@ def compare_cm(cm1_path, cm2_path, class_names: list, normalized: bool = False) 
     cm2 = cm2[5:13, 5:13]
     annot1 = annot1[5:13, 5:13]
     annot2 = annot2[5:13, 5:13]
+    delta = delta[5:13, 5:13]
     subset_class_names = class_names[5:13]
 
     # Set up a figure with two subplots
-    fig, axes = plt.subplots(1, 2, figsize=(30, 12), sharey=True)
+    fig, axes = plt.subplots(1, 1, figsize=(15, 12), sharey=True)
 
     # ----------------------
     # Plot for Model 1 (unchanged CM)
     # ----------------------
-    sns.heatmap(cm1, annot=annot1, fmt='' if normalized else 'd', cmap='Blues',
-                xticklabels=subset_class_names, yticklabels=subset_class_names, ax=axes[0],
-                annot_kws={'fontsize': 18})
-    axes[0].set_title("Sup CM", fontsize=22)
-    axes[0].set_xlabel("Predicted", fontsize=18)
-    axes[0].set_ylabel("Ground Truth", fontsize=18)
-    axes[0].set_xticklabels(axes[0].get_xticklabels(), fontsize=20, rotation=45, ha="right")
-    axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=20)
+    # sns.heatmap(cm1, annot=annot1, fmt='' if normalized else 'd', cmap='Blues',
+    #             xticklabels=subset_class_names, yticklabels=subset_class_names, ax=axes[0],
+    #             annot_kws={'fontsize': 18})
+    # axes[0].set_title("Sup CM", fontsize=22)
+    # axes[0].set_xlabel("Predicted", fontsize=18)
+    # axes[0].set_ylabel("Ground Truth", fontsize=18)
+    # axes[0].set_xticklabels(axes[0].get_xticklabels(), fontsize=20, rotation=45, ha="right")
+    # axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=20)
 
     # ----------------------
     # Plot for Model 2 (CM with delta)
     # ----------------------
-    sns.heatmap(cm2, annot=annot2, fmt='', cmap='Blues',
-                xticklabels=subset_class_names, yticklabels=subset_class_names, ax=axes[1],
-                annot_kws={'fontsize': 18})
-    axes[1].set_title("SupCon CM", fontsize=22)
-    axes[1].set_xlabel("Predicted", fontsize=18)
-    axes[1].set_ylabel("")
-    axes[1].set_xticklabels(axes[1].get_xticklabels(), fontsize=20, rotation=45, ha="right")
+    # sns.heatmap(cm2, annot=annot2, fmt='', cmap='Blues',
+    #             xticklabels=subset_class_names, yticklabels=subset_class_names, ax=axes[1],
+    #             annot_kws={'fontsize': 18})
+    sns.heatmap(
+        delta,  # ← use delta, not cm2
+        annot=annot2,  # your “value\n(±diff)” strings
+        fmt='',
+        cmap=sns.diverging_palette(20, 220, as_cmap=True),
+        center=0,  # zero-centered diverging map
+        xticklabels=subset_class_names,
+        yticklabels=subset_class_names,
+        ax=axes,
+        annot_kws={'fontsize': 18}
+    )
+    # axes[1].set_title("SupCon CM", fontsize=22)
+    # axes[1].set_xlabel("Predicted", fontsize=18)
+    # axes[1].set_ylabel("")
+    # axes[1].set_xticklabels(axes[1].get_xticklabels(), fontsize=20, rotation=45, ha="right")
+
+    # axes.set_title("SupCon CM", fontsize=22)
+    axes.set_xlabel("Predicted", fontsize=20)
+    axes.set_ylabel("Ground Truth", fontsize=20)
+    axes.set_xticklabels(axes.get_xticklabels(), fontsize=18, rotation=45, ha="right")
+    axes.set_yticklabels(axes.get_yticklabels(), fontsize=18)
     # axes[1].set_yticklabels(axes[1].get_yticklabels(), fontsize=16)
 
     plt.tight_layout()
@@ -295,16 +338,16 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main_result_dir = args.compared_dir
-    l2_metrics_df, kappa_score = performance_calculator(main_result_dir)
+    main_result_dir = args.result_dir
+    l2_metrics_df, kappa_score, mcc = performance_calculator(main_result_dir)
     # tools.display_dataframe_to_user(name="L2 Classification Metrics", dataframe=l2_metrics_df)
     print(l2_metrics_df)
-    print(f'The kappa score is {kappa_score}.')
+    print(f'Kappa: {kappa_score}; MCC: {mcc}.')
 
-    # # Draw the CM for the main experiment
+    # Draw the CM for the main experiment
     # class_names = list(REASSIGN_LABEL_NAME_L3.values())
     # main_cm_path = os.path.join(main_result_dir, 'confusion_matrix_l3_normalized_cvtest.npy')
-    # # plot_cm(main_cm_path, class_names, normalized=True)
+    # plot_cm(main_cm_path, class_names, normalized=True)
     #
     # # Compare the main CM with a second CM
     # compared_dir = args.compared_dir
